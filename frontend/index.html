@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今日拍板 · 本地探索Agent</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <!-- Leaflet 地图 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <div class="phone">
+
+    <!-- ===== 顶部栏 ===== -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">拍</span>
+        <div>
+          <div class="title">今日拍板</div>
+          <div class="subtitle" id="topSubtitle">本地探索 · 帮你把事做完</div>
+        </div>
+      </div>
+      <div class="loc">📍 望京</div>
+    </header>
+
+    <!-- ===== 页面容器 ===== -->
+    <div class="pages">
+
+      <!-- 页1：对话规划 -->
+      <div class="page active" id="page-chat">
+        <main class="chat" id="chat">
+          <div class="msg bot">
+            <div class="bubble">
+              周末好！想去哪玩、和谁、大概几个小时？<br>一句话告诉我，我来安排好一切 😊
+            </div>
+          </div>
+          <div class="quick-examples" id="examples">
+            <button class="chip" data-text="今天下午是空的，想和老婆孩子出去玩几个小时，别离家太远。孩子5岁，老婆最近在减肥">👨‍👩‍👧 家庭：带老婆孩子</button>
+            <button class="chip" data-text="周末想和朋友出去玩几个小时，总共4个人，2个男生2个女生，别太远">🍻 朋友：4人聚会</button>
+          </div>
+        </main>
+        <footer class="inputbar">
+          <input id="input" type="text" placeholder="例如：下午带家人出去玩几小时…" autocomplete="off">
+          <button id="send">发送</button>
+        </footer>
+      </div>
+
+      <!-- 页2：地图路线 -->
+      <div class="page" id="page-map">
+        <div class="map-header">
+          <div class="map-title" id="mapTitle">全程路线</div>
+          <div class="map-meta" id="mapMeta">选好方案后查看路线</div>
+        </div>
+        <div id="map"></div>
+        <div class="map-steps" id="mapSteps"></div>
+      </div>
+
+      <!-- 页3：发现 -->
+      <div class="page" id="page-discover">
+        <div class="discover-header">
+          <div class="dh-title">周末去哪儿 🗺️</div>
+          <div class="dh-sub">望京商圈 · 实时热度</div>
+        </div>
+        <div class="discover-list" id="discoverList"></div>
+      </div>
+
+      <!-- 页4：历史 -->
+      <div class="page" id="page-history">
+        <div class="history-header">
+          <div class="dh-title">决策记录 📋</div>
+          <div class="dh-sub">过往安排，随时重启</div>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+
+    </div><!-- /pages -->
+
+    <!-- ===== 底部导航 ===== -->
+    <nav class="tabbar">
+      <button class="tab active" data-page="chat">
+        <span class="ti">💬</span><span class="tl">规划</span>
+      </button>
+      <button class="tab" data-page="map">
+        <span class="ti">🗺️</span><span class="tl">地图</span>
+      </button>
+      <button class="tab" data-page="discover">
+        <span class="ti">🔍</span><span class="tl">发现</span>
+      </button>
+      <button class="tab" data-page="history">
+        <span class="ti">📋</span><span class="tl">记录</span>
+      </button>
+    </nav>
+
+  </div><!-- /phone -->
+
+  <!-- 接力浮层 -->
+  <div class="relay-mask" id="relayMask" hidden>
+    <div class="relay-card" id="relayCard"></div>
+  </div>
+
+  <!-- 追问浮层 -->
+  <div class="ask-mask" id="askMask" hidden>
+    <div class="ask-card">
+      <div class="ask-title">💬 追问助手</div>
+      <div class="ask-chat" id="askChat"></div>
+      <div class="ask-input-row">
+        <input id="askInput" type="text" placeholder="问我路线、活动建议…">
+        <button id="askSend">发</button>
+      </div>
+      <button class="ask-close" id="askClose">关闭</button>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
