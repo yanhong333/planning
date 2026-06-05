@@ -3,115 +3,211 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>今日拍板 · 本地探索Agent</title>
+  <title>闲时达 · Leisure Done</title>
   <link rel="stylesheet" href="/static/styles.css">
-  <!-- Leaflet 地图 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
-  <div class="phone">
 
-    <!-- ===== 顶部栏 ===== -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="logo">拍</span>
-        <div>
-          <div class="title">今日拍板</div>
-          <div class="subtitle" id="topSubtitle">本地探索 · 帮你把事做完</div>
-        </div>
+<!-- ████████  桌面端布局  ████████ -->
+<div class="app" id="app">
+
+  <!-- ── 左侧导航栏（桌面） ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-brand">
+      <div class="sb-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#22c98a"/>
+          <path d="M8 12l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </div>
-      <div class="loc">📍 望京</div>
+      <div>
+        <div class="sb-name">闲时达</div>
+        <div class="sb-en">Leisure Done</div>
+      </div>
+    </div>
+
+    <nav class="sb-nav">
+      <button class="sb-item active" data-page="chat">
+        <svg class="sb-icon" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span>智能规划</span>
+      </button>
+      <button class="sb-item" data-page="map">
+        <svg class="sb-icon" viewBox="0 0 24 24" fill="none"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 9m0 8V9m0 0L9 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>路线地图</span>
+      </button>
+      <button class="sb-item" data-page="discover">
+        <svg class="sb-icon" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span>灵感发现</span>
+      </button>
+      <button class="sb-item" data-page="history">
+        <svg class="sb-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span>历史行程</span>
+      </button>
+    </nav>
+
+    <div class="sb-bottom">
+      <div class="sb-loc">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5z" fill="#22c98a"/></svg>
+        望京商圈
+      </div>
+      <div class="sb-leo">
+        <div class="leo-avatar">L</div>
+        <span>Leo 助手在线</span>
+        <span class="leo-dot"></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── 主内容区 ── -->
+  <main class="main-content">
+
+    <!-- 移动端顶栏 -->
+    <header class="mob-topbar">
+      <div class="mob-brand">
+        <div class="mob-logo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#22c98a"/><path d="M8 12l3 3 5-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <span class="mob-title">闲时达</span>
+      </div>
+      <div class="mob-loc">📍 望京</div>
     </header>
 
-    <!-- ===== 页面容器 ===== -->
+    <!-- 页面容器 -->
     <div class="pages">
 
-      <!-- 页1：对话规划 -->
+      <!-- ── 规划页（桌面两栏：对话 + 结构化需求） ── -->
       <div class="page active" id="page-chat">
-        <main class="chat" id="chat">
-          <div class="msg bot">
-            <div class="bubble">
-              周末好！想去哪玩、和谁、大概几个小时？<br>一句话告诉我，我来安排好一切 😊
+
+        <!-- 左：对话流 -->
+        <div class="chat-col">
+          <div class="chat-col-header">
+            <div class="leo-badge">
+              <div class="leo-av-sm">L</div>
+              <span>Leo</span>
+              <span class="leo-online">在线</span>
             </div>
           </div>
-          <div class="quick-examples" id="examples">
-            <button class="chip" data-text="今天下午是空的，想和老婆孩子出去玩几个小时，别离家太远。孩子5岁，老婆最近在减肥">👨‍👩‍👧 家庭：带老婆孩子</button>
-            <button class="chip" data-text="周末想和朋友出去玩几个小时，总共4个人，2个男生2个女生，别太远">🍻 朋友：4人聚会</button>
+          <div class="chat" id="chat">
+            <!-- 欢迎气泡 -->
+            <div class="msg bot">
+              <div class="leo-av-msg">L</div>
+              <div class="bubble">
+                你好！我是 <strong>Leo</strong>，闲时达的规划助手。<br>
+                说说你想怎么过这个下午，我来帮你安排好一切 🌿
+              </div>
+            </div>
+            <div class="quick-examples" id="examples">
+              <button class="chip" data-text="今天下午是空的，想和老婆孩子出去玩几个小时，别离家太远。孩子5岁，老婆最近在减肥">👨‍👩‍👧 家庭 · 带老婆孩子</button>
+              <button class="chip" data-text="周末想和朋友出去玩几个小时，总共4个人，2个男生2个女生，别太远">🍻 朋友 · 4人聚会</button>
+            </div>
           </div>
-        </main>
-        <footer class="inputbar">
-          <input id="input" type="text" placeholder="例如：下午带家人出去玩几小时…" autocomplete="off">
-          <button id="send">发送</button>
-        </footer>
+          <div class="inputbar">
+            <input id="input" type="text" placeholder="告诉 Leo 你的想法…" autocomplete="off">
+            <button id="send">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 右：结构化需求面板（桌面显示，移动端隐藏） -->
+        <div class="analysis-col" id="analysisCol">
+          <div class="ac-empty" id="acEmpty">
+            <div class="ac-empty-icon">✨</div>
+            <div class="ac-empty-title">结构化需求分析</div>
+            <div class="ac-empty-sub">输入你的想法后，Leo 会在这里<br>展示解析出的关键信息</div>
+          </div>
+          <div class="ac-content" id="acContent" hidden></div>
+        </div>
+
       </div>
 
-      <!-- 页2：地图路线 -->
+      <!-- ── 地图页 ── -->
       <div class="page" id="page-map">
         <div class="map-header">
           <div class="map-title" id="mapTitle">全程路线</div>
           <div class="map-meta" id="mapMeta">选好方案后查看路线</div>
         </div>
-        <div id="map"></div>
-        <div class="map-steps" id="mapSteps"></div>
-      </div>
-
-      <!-- 页3：发现 -->
-      <div class="page" id="page-discover">
-        <div class="discover-header">
-          <div class="dh-title">周末去哪儿 🗺️</div>
-          <div class="dh-sub">望京商圈 · 实时热度</div>
+        <div class="map-body">
+          <div id="map"></div>
+          <div class="map-steps" id="mapSteps">
+            <div class="map-empty">
+              <div class="map-empty-icon">🗺️</div>
+              <div>在规划页选择方案后<br>点击「看路线」即可显示全程</div>
+            </div>
+          </div>
         </div>
-        <div class="discover-list" id="discoverList"></div>
       </div>
 
-      <!-- 页4：历史 -->
+      <!-- ── 发现页 ── -->
+      <div class="page" id="page-discover">
+        <div class="page-header">
+          <div class="ph-title">灵感发现</div>
+          <div class="ph-sub">望京商圈 · 周末热门</div>
+        </div>
+        <div class="discover-list" id="discoverList">
+          <div class="disc-loading">加载中…</div>
+        </div>
+      </div>
+
+      <!-- ── 历史页 ── -->
       <div class="page" id="page-history">
-        <div class="history-header">
-          <div class="dh-title">决策记录 📋</div>
-          <div class="dh-sub">过往安排，随时重启</div>
+        <div class="page-header">
+          <div class="ph-title">历史行程</div>
+          <div class="ph-sub">回顾过往，随时复用</div>
         </div>
         <div class="history-list" id="historyList"></div>
       </div>
 
     </div><!-- /pages -->
 
-    <!-- ===== 底部导航 ===== -->
-    <nav class="tabbar">
+    <!-- 移动端底部导航 -->
+    <nav class="mob-tabbar">
       <button class="tab active" data-page="chat">
-        <span class="ti">💬</span><span class="tl">规划</span>
+        <svg class="ti" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span class="tl">规划</span>
       </button>
       <button class="tab" data-page="map">
-        <span class="ti">🗺️</span><span class="tl">地图</span>
+        <svg class="ti" viewBox="0 0 24 24" fill="none"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 9m0 8V9m0 0L9 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tl">地图</span>
       </button>
       <button class="tab" data-page="discover">
-        <span class="ti">🔍</span><span class="tl">发现</span>
+        <svg class="ti" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="tl">发现</span>
       </button>
       <button class="tab" data-page="history">
-        <span class="ti">📋</span><span class="tl">记录</span>
+        <svg class="ti" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="tl">记录</span>
       </button>
     </nav>
 
-  </div><!-- /phone -->
+  </main>
+</div>
 
-  <!-- 接力浮层 -->
-  <div class="relay-mask" id="relayMask" hidden>
-    <div class="relay-card" id="relayCard"></div>
-  </div>
+<!-- ═══════════  浮层（接力 / 追问）  ═══════════ -->
 
-  <!-- 追问浮层 -->
-  <div class="ask-mask" id="askMask" hidden>
-    <div class="ask-card">
-      <div class="ask-title">💬 追问助手</div>
-      <div class="ask-chat" id="askChat"></div>
-      <div class="ask-input-row">
-        <input id="askInput" type="text" placeholder="问我路线、活动建议…">
-        <button id="askSend">发</button>
+<div class="overlay-mask" id="relayMask" hidden>
+  <div class="overlay-card relay-card-inner" id="relayCard"></div>
+</div>
+
+<div class="overlay-mask" id="askMask" hidden>
+  <div class="overlay-card ask-card-inner">
+    <div class="oc-header">
+      <div class="oc-title">
+        <div class="leo-av-sm">L</div>
+        Leo 助手
       </div>
-      <button class="ask-close" id="askClose">关闭</button>
+      <button class="oc-close" id="askClose">✕</button>
+    </div>
+    <div class="ask-chat" id="askChat"></div>
+    <div class="ask-input-row">
+      <input id="askInput" type="text" placeholder="问路线、问建议…">
+      <button id="askSend">发送</button>
     </div>
   </div>
+</div>
 
-  <script src="/static/app.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>

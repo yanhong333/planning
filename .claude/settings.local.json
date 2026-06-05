@@ -14,7 +14,11 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8848/static/app.js)",
       "Bash(python run.py)",
       "Bash(python -X utf8 -c ' *)",
-      "Bash(PORT=8849 python run.py)"
+      "Bash(PORT=8849 python run.py)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8849/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8849/static/styles.css)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8849/static/app.js)",
+      "Bash(curl -s http://127.0.0.1:8849/)"
     ]
   }
 }
