@@ -210,7 +210,7 @@ tempCodeRunnerFile.py
 .pypirc
 
 # Frontend local map key
-frontend/config.js
+#frontend/config.js
 
 # Marimo
 marimo/_static/
