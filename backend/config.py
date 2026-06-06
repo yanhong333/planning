@@ -31,6 +31,9 @@ class Settings:
     # User default location, used by mock planning data.
     DEFAULT_LOCATION: str = "望京"
 
+    # SQLite auth database. Relative paths are resolved from the project root.
+    AUTH_DB_PATH: str = os.getenv("AUTH_DB_PATH", "instance/leisure_done.sqlite3")
+
     # LLM config: DeepSeek/OpenAI-compatible APIs. Never hardcode secrets here.
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")

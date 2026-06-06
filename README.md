@@ -29,6 +29,7 @@ LLM_MODEL=deepseek-chat
 SIMULATE_LATENCY=1
 
 API_BASE_URL=
+AUTH_DB_PATH=instance/leisure_done.sqlite3
 
 AMAP_WEB_SERVICE_KEY=
 AMAP_WEB_SERVICE_BASE_URL=https://restapi.amap.com
@@ -111,7 +112,13 @@ frontend/
   styles.css             页面样式
   app.js                 SPA 状态、交互、API 调用、地图
   config.js              无密钥静态占位配置
-  assets/leo-avatar.png.png
+  assets/leo-avatar.png
+  assets/default-user-avatar.png
+
+docs/
+  USER_GUIDE.md          使用教程，左上角头像弹窗同步展示
+  DESIGN.md              产品与架构设计说明
+  FRONTEND_AND_PYDANTIC_NOTES.md
 
 functions/
   api/                   Cloudflare Pages Functions API
@@ -121,6 +128,28 @@ serve.py                 本地完整前后端调试入口
 requirements.txt         Python 依赖
 .env.example             环境变量模板
 ```
+
+## 账号与游客访问
+
+前端启动后会先显示登录层，用户可以登录、注册，或者选择游客访问。游客访问不会创建账号，也不会阻止原有规划、地图和发现功能。
+左上角头像会打开使用教程弹窗，内容同步维护在 `docs/USER_GUIDE.md`。
+
+账号数据由 FastAPI 后端写入 SQLite，密码只保存 PBKDF2 哈希和盐，不保存明文。相关接口：
+
+```txt
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/logout
+GET  /api/history
+POST /api/history
+```
+
+`AUTH_DB_PATH` 是 FastAPI 后端使用的 SQLite 账号数据库路径；相对路径会从项目根目录解析，默认写入 `instance/leisure_done.sqlite3`。
+
+注册用户会被分配一个首字母头像颜色，保存在 `users.avatar_color`。注册用户的历史行程保存在 `trips` 表中；游客访问不写数据库，游客历史只存在当前页面内存里，刷新或离开页面后清空，并会重新出现登录/注册弹窗。
+
+当前 SQLite 账号库适用于 `serve.py` 本地调试或部署一个持久运行的 Python/FastAPI 后端。如果只部署到 Cloudflare Pages Functions，需要改接 Cloudflare D1 或把 `API_BASE_URL` 指向独立后端，否则 Pages Functions 版本不会共享这份 SQLite 数据库。
 
 ## 主要接口
 

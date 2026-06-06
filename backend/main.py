@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,16 @@ from pydantic import BaseModel
 
 from .agent import orchestrator
 from .agent.llm import llm
+from .auth import (
+    AuthError,
+    create_trip,
+    delete_session,
+    get_user_by_token,
+    init_db,
+    list_trips,
+    login_user,
+    register_user,
+)
 from .data.mock_db import DISCOVER_SPOTS, USER_HOME
 from .models.schemas import Audience, Plan, Scene, UserRequest
 from .services import amap
@@ -75,7 +85,94 @@ class LLMBody(BaseModel):
     max_tokens: int = 2048
 
 
+class AuthBody(BaseModel):
+    username: str
+    password: str
+
+
+class TripBody(BaseModel):
+    title: str
+    summary: str = ""
+    steps: list[str] = []
+    plan: dict = {}
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    init_db()
+
+
 # ============ 接口 ============
+
+def _auth_response(user: dict, token: str) -> dict:
+    return {"ok": True, "user": user, "token": token}
+
+
+def _bearer_token(authorization: str = "") -> str:
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return ""
+    return token.strip()
+
+
+def _current_user(authorization: str = "") -> dict:
+    user = get_user_by_token(_bearer_token(authorization))
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
+@app.post("/api/auth/register")
+async def api_auth_register(body: AuthBody):
+    try:
+        user, token = register_user(body.username, body.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _auth_response(user, token)
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(body: AuthBody):
+    try:
+        user, token = login_user(body.username, body.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return _auth_response(user, token)
+
+
+@app.get("/api/auth/me")
+async def api_auth_me(authorization: str = Header("")):
+    token = _bearer_token(authorization)
+    user = get_user_by_token(token)
+    if not user:
+        return {"ok": False, "user": None}
+    return {"ok": True, "user": user}
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout(authorization: str = Header("")):
+    delete_session(_bearer_token(authorization))
+    return {"ok": True}
+
+
+@app.get("/api/history")
+async def api_history_list(authorization: str = Header("")):
+    user = _current_user(authorization)
+    return {"ok": True, "items": list_trips(int(user["id"]))}
+
+
+@app.post("/api/history")
+async def api_history_create(body: TripBody, authorization: str = Header("")):
+    user = _current_user(authorization)
+    trip = create_trip(
+        int(user["id"]),
+        body.title,
+        body.summary,
+        body.steps,
+        body.plan,
+    )
+    return {"ok": True, "item": trip}
+
 
 @app.post("/api/plan")
 async def api_plan(req: UserRequest):
@@ -105,8 +202,9 @@ async def api_execute(body: ExecuteBody):
 async def api_chat(body: ChatBody):
     """自由追问接口：用 DeepSeek 直接回答关于活动/餐厅/路线的问题。"""
     system = (
-        "你是「今日拍板」本地生活助手，帮用户规划望京商圈周末活动。"
+        "你是「Leisure Done」本地生活助手 Leo，帮用户规划本地生活活动。"
         "回答简洁、有用，控制在150字以内，语气轻松。"
+        "如果提到产品名，只使用 Leisure Done，不要说“闲时达”。"
         "如果用户问路线，给出步行/骑行建议和大概时间，不要说'打开地图'，"
         "因为页面上有内置地图。如果上下文中有方案信息，结合方案回答。"
     )
@@ -114,7 +212,7 @@ async def api_chat(body: ChatBody):
     reply = await llm.complete_text(system, body.message + ctx)
     if reply is None:
         # LLM 不可用时的兜底
-        reply = "好问题！望京商圈半径3公里内步行/骑行都很方便，建议直接看地图页查看路线 🗺️"
+        reply = "好问题！附近半径3公里内步行/骑行都很方便，可以结合当前方案的地图页查看路线 🗺️"
     return {"reply": reply}
 
 

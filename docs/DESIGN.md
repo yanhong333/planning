@@ -89,3 +89,26 @@ window.APP_CONFIG = {
 - `models/schemas.py`：Pydantic 数据模型。
 
 Cloudflare Pages Functions 下的 `functions/api/*` 保持与 FastAPI 路由兼容，用于静态站部署时保护服务端密钥。
+
+## 账号与游客访问
+
+项目新增轻量账号系统：前端启动时展示登录层，支持登录、注册和游客访问。游客访问不会创建账号，也不阻断原有规划、地图、发现和 Leo 助手功能。游客状态不持久化，刷新或离开页面后会重新显示登录/注册入口。
+
+左上角 agent 头像同时作为使用教程入口，点击后展示 `docs/USER_GUIDE.md` 同步维护的教程内容。
+
+FastAPI 后端通过 `backend/auth.py` 使用 SQLite 保存账号和会话，默认数据库路径为 `AUTH_DB_PATH=instance/leisure_done.sqlite3`。密码只保存 PBKDF2 哈希和盐，不保存明文。
+
+账号接口为：
+
+```txt
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/logout
+GET  /api/history
+POST /api/history
+```
+
+注册用户头像采用账号首字母 + 注册时生成的纯色背景，颜色保存在 `users.avatar_color`。注册用户历史行程写入 `trips` 表；游客历史只保存在前端内存中，刷新或离开页面即销毁，不进入数据库。
+
+当前 SQLite 方案适合本地 `serve.py` 或独立 FastAPI 后端部署。若只使用 Cloudflare Pages Functions，需要接入 D1 或把 `API_BASE_URL` 指向独立后端。

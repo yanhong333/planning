@@ -40,9 +40,17 @@ const S = {
   mapLayers: [],
   planSummary: '',
   routeCache: new Map(),
+  history: [],
+  auth: {
+    token: localStorage.getItem('leisureDoneAuthToken') || '',
+    user: null,
+    guest: false,
+  },
 };
 
 const ROUTE_CACHE_TTL_MS = 30 * 60 * 1000;
+const AUTH_TOKEN_KEY = 'leisureDoneAuthToken';
+localStorage.removeItem('leisureDoneGuestAccess');
 window.addEventListener('beforeunload', () => S.routeCache.clear());
 
 // ===== DOM 引用 =====
@@ -52,6 +60,20 @@ const inputEl     = $('input');
 const sendBtn     = $('send');
 const relayMask   = $('relayMask');
 const relayCard   = $('relayCard');
+const guideTrigger = $('guideTrigger');
+const guideMask   = $('guideMask');
+const guideClose  = $('guideClose');
+const guideContent = $('guideContent');
+const authMask    = $('authMask');
+const authForm    = $('authForm');
+const authUsername = $('authUsername');
+const authPassword = $('authPassword');
+const authSubmit  = $('authSubmit');
+const authError   = $('authError');
+const guestBtn    = $('guestBtn');
+const logoutBtn   = $('logoutBtn');
+const accountStatus = $('accountStatus');
+const accountName = accountStatus?.querySelector('span:not(.leo-dot)');
 const askChat     = $('askChat');
 const askInput    = $('askInput');
 const askSend     = $('askSend');
@@ -62,11 +84,108 @@ const discoverList = $('discoverList');
 const historyList  = $('historyList');
 const acEmpty     = $('acEmpty');
 const acContent   = $('acContent');
+const welcomeBubble = $('welcomeBubble');
 
 // ===== 工具 =====
 function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
 function node(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; }
+
+function currentDayPart(){
+  return new Date().getHours() < 12 ? '上午' : '下午';
+}
+
+function renderWelcomeBubble(){
+  if(!welcomeBubble) return;
+  welcomeBubble.innerHTML = `你好！我是 <strong>Leo</strong>，你的出行规划助手。<br>说说你想怎么过这个${currentDayPart()}，我来帮你安排好一切 🌿`;
+}
+
+const USER_GUIDE_MD = `# 闲时达 使用教程
+
+## 1. 登录或游客访问
+
+打开页面后，你可以注册/登录账号，也可以先选择游客访问。
+
+- 注册用户：历史行程会保存到数据库，之后登录还能继续查看。
+- 游客访问：数据只保存在当前页面，刷新或离开后会清空。
+
+## 2. 生成出行方案
+
+在“智能规划”里告诉 Leo 你的想法，例如：
+
+- 今天下午想和朋友找个地方坐坐
+- 上午想带孩子去附近玩，不想走太远
+- 一个人想轻松逛逛，顺便吃点东西
+
+Leo 会根据你的时间、位置、天气和偏好生成出行方案。
+
+## 3. 查看路线地图
+
+生成方案后，点击“路线地图”可以查看每一站的位置和路线信息。
+
+路线会展示步行、骑行和可用的公共交通时间。
+
+## 4. 灵感发现
+
+“灵感发现”会根据你的位置推荐附近地点。
+
+如果你允许定位，会优先展示当前位置周边；如果没有定位权限，会使用天安门作为默认位置。
+
+## 5. Leo 助手
+
+点击“Leo 助手”可以继续追问路线、活动安排、餐厅选择或替代方案。
+
+## 6. 历史行程
+
+注册用户生成过的行程会出现在“历史行程”里，方便之后回顾或重新安排。
+
+游客模式下历史不会写入数据库，刷新后会清空。`;
+
+function renderGuideMarkdown(markdown){
+  const lines = markdown.trim().split(/\r?\n/);
+  const html = [];
+  let inList = false;
+  const closeList = () => {
+    if(inList){
+      html.push('</ul>');
+      inList = false;
+    }
+  };
+  lines.forEach(line => {
+    const text = line.trim();
+    if(!text){
+      closeList();
+      return;
+    }
+    if(text.startsWith('## ')){
+      closeList();
+      html.push(`<h2>${esc(text.slice(3))}</h2>`);
+    } else if(text.startsWith('# ')){
+      closeList();
+      html.push(`<h1 id="guideTitle">${esc(text.slice(2))}</h1>`);
+    } else if(text.startsWith('- ')){
+      if(!inList){
+        html.push('<ul>');
+        inList = true;
+      }
+      html.push(`<li>${esc(text.slice(2))}</li>`);
+    } else {
+      closeList();
+      html.push(`<p>${esc(text)}</p>`);
+    }
+  });
+  closeList();
+  return html.join('');
+}
+
+function openGuide(){
+  if(guideContent) guideContent.innerHTML = renderGuideMarkdown(USER_GUIDE_MD);
+  if(guideMask) guideMask.hidden = false;
+}
+
+function closeGuide(){
+  if(guideMask) guideMask.hidden = true;
+}
 
 const CFG = () => window.APP_CONFIG || {};
 
@@ -81,6 +200,28 @@ function apiUrl(path){
   const base = getApiBase();
   if(!base) return '';
   return `${base}${path}`;
+}
+
+function authHeaders(extra = {}){
+  const headers = { ...extra };
+  if(S.auth.token) headers.Authorization = `Bearer ${S.auth.token}`;
+  return headers;
+}
+
+async function authRequest(path, options = {}){
+  const target = apiUrl(path);
+  if(!target) throw new Error('当前不是 HTTP/HTTPS 环境，无法连接账号服务');
+  const headers = authHeaders({
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  });
+  const res = await fetch(target, { ...options, headers });
+  let data = null;
+  try { data = await res.json(); } catch(e) {}
+  if(!res.ok){
+    throw new Error(data?.detail || data?.message || '账号服务暂时不可用');
+  }
+  return data || {};
 }
 
 const DEFAULT_LOCATION = {
@@ -99,7 +240,11 @@ async function tryBackend(url, options = {}){
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const r = await fetch(target, { ...options, signal: ctrl.signal });
+    const r = await fetch(target, {
+      ...options,
+      headers: authHeaders(options.headers || {}),
+      signal: ctrl.signal,
+    });
     clearTimeout(t);
     if(r.ok) return r.json();
   } catch(e) { /* 后端不可用，忽略 */ }
@@ -204,7 +349,7 @@ async function callDeepSeek(systemPrompt, userContent, jsonMode = false){
 async function aiPlanFromText(userText){
   // 优先使用真实定位，兜底使用内置默认位置
   const city = S_location.city || DEFAULT_LOCATION.city;
-  const loc  = getLocationDisplayName();
+  const loc  = getLocationPlanningName();
 
   // Step 1: DeepSeek 提取意图关键词（快，无 POI）
   const intentJson = await callDeepSeek(
@@ -238,7 +383,7 @@ ${actPois.slice(0,5).map((p,i)=>`${i+1}. ${p.name}，${p.address}，评分${p.ra
 ${foodPois.slice(0,5).map((p,i)=>`${i+1}. ${p.name}，${p.address}，评分${p.rating}，人均¥${p.cost||'未知'}`).join('\n') || '暂无数据'}`;
 
   const planJson = await callDeepSeek(
-    `你是「闲时达」本地生活规划 AI Leo。根据用户需求和高德 POI 数据，生成 2 套个性化出行方案。
+    `你是「Leisure Done」本地生活规划 AI Leo。根据用户需求和高德 POI 数据，生成 2 套个性化出行方案。
 
 只返回纯 JSON（不要任何 markdown 代码块），格式如下：
 {"intent_summary":"一句话总结","constraints":[{"key":"约束名","reason":"推断原因"}],"plans":[{"id":"plan_1","title":"方案名","highlights":["亮点1","亮点2","亮点3"],"total_minutes":180,"total_cost":200,"steps":[{"order":1,"slot":"活动","time_range":"14:00-15:30","venue_name":"场所名","venue_address":"详细地址","venue_lat":40.003,"venue_lng":116.472,"why":"具体理由"}]}]}
@@ -341,7 +486,7 @@ async function apiJson(url, options = {}){
     let body = {};
     try { body = JSON.parse(options.body || '{}'); } catch(e) {}
     const reply = await callDeepSeek(
-      '你是「闲时达」本地生活助手 Leo，回答关于路线、活动、餐厅的问题，简洁有用，100 字内，不说"打开地图"。',
+      '你是「Leisure Done」本地生活助手 Leo，回答关于路线、活动、餐厅的问题，简洁有用，100 字内，不说"打开地图"。如果提到产品名，只使用 Leisure Done，不要说“闲时达”。',
       body.message + (body.context ? `\n当前方案：${body.context}` : '')
     ).catch(() => '稍后再试，Leo 正在思考中…');
     return { reply };
@@ -453,7 +598,7 @@ function mockPlanResponse(text = ''){
       party_size: partySize,
       duration_hours:3.5,
       start_time:'14:30',
-      location:getLocationDisplayName(),
+      location:getLocationPlanningName(),
       raw_text:'',
       constraints:[
         {key:'max_travel_minutes',value:'15',source:'inferred',reason:'你提到别太远，优先选 15 分钟内'},
@@ -577,6 +722,167 @@ function showThink(text){
 }
 function hideThink(){ if(thinkNode){ thinkNode.remove(); thinkNode=null; } }
 
+function userAvatarHTML(extraClass = ''){
+  if(S.auth.user){
+    const initial = esc((S.auth.user.username || 'U').trim().slice(0, 1).toUpperCase());
+    const color = esc(S.auth.user.avatar_color || '#22c98a');
+    return `<div class="user-avatar initial ${extraClass}" style="background-color:${color}">${initial}</div>`;
+  }
+  return `<div class="user-avatar ${extraClass}">U</div>`;
+}
+
+function leoAvatarHTML(extraClass = ''){
+  return `<div class="leo-av-sm ${extraClass}">L</div>`;
+}
+
+function normalizeLeoReply(text){
+  return String(text || '').replaceAll('闲时达', 'Leisure Done');
+}
+
+// ===== 账号入口：登录 / 注册 / 游客访问 =====
+let authMode = 'login';
+
+function setAuthMode(mode){
+  authMode = mode === 'register' ? 'register' : 'login';
+  document.querySelectorAll('[data-auth-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.authMode === authMode);
+  });
+  if(authSubmit) authSubmit.textContent = authMode === 'register' ? '注册' : '登录';
+  if(authPassword) authPassword.autocomplete = authMode === 'register' ? 'new-password' : 'current-password';
+  showAuthError('');
+}
+
+function showAuthError(text){
+  if(!authError) return;
+  authError.textContent = text || '';
+  authError.hidden = !text;
+}
+
+function updateAccountUI(){
+  if(accountName){
+    accountName.textContent = S.auth.user?.username || '游客访问';
+  }
+  if(logoutBtn){
+    logoutBtn.hidden = !S.auth.user;
+  }
+  accountStatus?.classList.toggle('is-guest', !S.auth.user);
+}
+
+function showAuthGate(){
+  setAuthMode('login');
+  if(authMask) authMask.hidden = false;
+  updateAccountUI();
+  setTimeout(()=>authUsername?.focus(), 60);
+}
+
+function hideAuthGate(){
+  if(authMask) authMask.hidden = true;
+  updateAccountUI();
+}
+
+function saveAuthSession(data){
+  S.auth.token = data.token || '';
+  S.auth.user = data.user || null;
+  S.auth.guest = false;
+  if(S.auth.token) localStorage.setItem(AUTH_TOKEN_KEY, S.auth.token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+  S.history = [];
+  hideAuthGate();
+  loadHistory().then(()=> {
+    if($('page-history')?.classList.contains('active')) renderHistoryPage();
+  });
+}
+
+function continueAsGuest(){
+  S.auth.token = '';
+  S.auth.user = null;
+  S.auth.guest = true;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  S.history = [];
+  hideAuthGate();
+  if($('page-history')?.classList.contains('active')) renderHistoryPage();
+}
+
+async function submitAuth(event){
+  event?.preventDefault();
+  const username = authUsername?.value.trim() || '';
+  const password = authPassword?.value || '';
+  if(!username || !password){
+    showAuthError('请输入账号和密码');
+    return;
+  }
+  if(authSubmit) authSubmit.disabled = true;
+  showAuthError('');
+  try {
+    const data = await authRequest(`/api/auth/${authMode}`, {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    saveAuthSession(data);
+    if(authPassword) authPassword.value = '';
+  } catch(e){
+    showAuthError(e.message || '账号服务暂时不可用');
+  } finally {
+    if(authSubmit) authSubmit.disabled = false;
+  }
+}
+
+async function restoreAuth(){
+  if(S.auth.token){
+    try {
+      const data = await authRequest('/api/auth/me', { method: 'GET' });
+      if(data.ok && data.user){
+        S.auth.user = data.user;
+        S.auth.guest = false;
+        hideAuthGate();
+        loadHistory().then(()=> {
+          if($('page-history')?.classList.contains('active')) renderHistoryPage();
+        });
+        return;
+      }
+    } catch(e) {}
+    S.auth.token = '';
+    S.auth.user = null;
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+  S.auth.guest = false;
+  S.history = [];
+  showAuthGate();
+}
+
+async function logout(){
+  if(S.auth.token){
+    try { await authRequest('/api/auth/logout', { method: 'POST' }); } catch(e) {}
+  }
+  S.auth.token = '';
+  S.auth.user = null;
+  S.auth.guest = false;
+  S.history = [];
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  showAuthGate();
+  if($('page-history')?.classList.contains('active')) renderHistoryPage();
+}
+
+document.querySelectorAll('[data-auth-mode]').forEach(btn => {
+  btn.onclick = () => setAuthMode(btn.dataset.authMode);
+});
+guideTrigger?.addEventListener('click', openGuide);
+guideClose?.addEventListener('click', closeGuide);
+guideMask?.addEventListener('click', event => {
+  if(event.target === guideMask) closeGuide();
+});
+document.addEventListener('keydown', event => {
+  if(event.key === 'Escape' && guideMask && !guideMask.hidden) closeGuide();
+});
+authForm?.addEventListener('submit', submitAuth);
+guestBtn?.addEventListener('click', continueAsGuest);
+logoutBtn?.addEventListener('click', logout);
+logoutBtn?.addEventListener('click', event => event.stopPropagation());
+accountStatus?.addEventListener('click', () => {
+  if(S.auth.user) return;
+  showAuthGate();
+});
+
 // ===== 导航（侧边栏 + 底部 Tab 统一处理）=====
 function switchPage(name){
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -637,6 +943,8 @@ async function doPlan(text){
   // 聊天流里给个简短确认
   msgBot(`好的！Leo 已识别关键信息（右侧面板可查看推理过程）。<br>以下是为「${sceneLabel(data.intent)}」量身定制的方案：`);
   data.plans.forEach(p => renderPlan(p, p.id === data.recommended_plan_id));
+  const recommendedPlan = data.plans.find(p => p.id === data.recommended_plan_id) || data.plans[0];
+  await saveHistory(recommendedPlan, `根据「${text}」生成`);
 }
 
 function sceneLabel(intent){
@@ -946,11 +1254,17 @@ function getStartPoint(){
   const center = getMapCenter();
   return {
     ...center,
-    name: getLocationDisplayName() || '出发点',
+    name: getLocationPlanningName() || '出发点',
   };
 }
 
 function getLocationDisplayName(){
+  if(S_location.status === 'locating') return '定位中……';
+  if(S_location.status === 'failed') return '定位失败，请提供位置权限';
+  return getLocationPlanningName();
+}
+
+function getLocationPlanningName(){
   return S_location.businessArea || S_location.district || S_location.city || DEFAULT_LOCATION.district;
 }
 
@@ -1268,7 +1582,7 @@ async function initDiscoverPage(){
 
 async function loadLocalDiscoverSpots(){
   const origin = getStartPoint();
-  const area = getLocationDisplayName();
+  const area = getLocationPlanningName();
   const city = S_location.city || DEFAULT_LOCATION.city;
   const types = '050000|060000|080000|110000|140000|141200|150000';
   const around = await amapPoiAround(origin, types, '', 3500, 14);
@@ -1378,25 +1692,85 @@ window.addDiscoverToChat = (name)=>{
 };
 
 // ===== 历史页 =====
-const HIST_KEY = 'leisureDoneHistory';
-
-function saveHistory(plan, summary){
-  const hist = JSON.parse(localStorage.getItem(HIST_KEY)||'[]');
-  hist.unshift({
-    id:Date.now(), planId:plan.id, title:plan.title, summary,
-    steps:plan.steps.map(s=>`${s.slot}：${s.venue.name}`),
-    plan,
-    date:new Date().toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}),
-  });
-  localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,20)));
+function tripSteps(plan){
+  return (plan?.steps || []).map(s=>`${s.slot}：${s.venue?.name || ''}`);
 }
 
-function renderHistoryPage(){
-  const hist = JSON.parse(localStorage.getItem(HIST_KEY)||'[]');
+function normalizeTrip(item){
+  const createdAt = item.created_at || item.date || new Date().toISOString();
+  return {
+    id: item.id,
+    title: item.title || item.plan?.title || '未命名行程',
+    summary: item.summary || '',
+    steps: item.steps || tripSteps(item.plan),
+    plan: item.plan,
+    created_at: createdAt,
+    date: formatHistoryDate(createdAt),
+  };
+}
+
+function formatHistoryDate(value){
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadHistory(){
+  if(!S.auth.user || !S.auth.token) return S.history;
+  try {
+    const data = await authRequest('/api/history', { method:'GET' });
+    S.history = (data.items || []).map(normalizeTrip);
+  } catch(e) {
+    S.history = [];
+  }
+  return S.history;
+}
+
+async function saveHistory(plan, summary = ''){
+  if(!plan) return null;
+  const payload = {
+    title: plan.title || '未命名行程',
+    summary: summary || '',
+    steps: tripSteps(plan),
+    plan,
+  };
+  if(S.auth.user && S.auth.token){
+    try {
+      const data = await authRequest('/api/history', {
+        method:'POST',
+        body:JSON.stringify(payload),
+      });
+      const item = normalizeTrip(data.item);
+      S.history = [item, ...S.history.filter(h=>h.id !== item.id)].slice(0,20);
+      if($('page-history')?.classList.contains('active')) renderHistoryPage();
+      return item;
+    } catch(e) {
+      return null;
+    }
+  }
+  const item = normalizeTrip({
+    ...payload,
+    id:Date.now(),
+    created_at:new Date().toISOString(),
+  });
+  S.history = [item, ...S.history].slice(0,20);
+  if($('page-history')?.classList.contains('active')) renderHistoryPage();
+  return item;
+}
+
+async function renderHistoryPage(){
+  if(S.auth.user && !S.history.length){
+    historyList.classList.remove('is-empty');
+    historyList.innerHTML = '<div class="disc-loading">加载中…</div>';
+    await loadHistory();
+  }
+  const hist = S.history;
   if(!hist.length){
-    historyList.innerHTML=`<div class="hist-empty"><div class="hist-empty-icon">📭</div>还没有历史行程<br><span style="font-size:12px">规划并执行一次方案后，记录会出现在这里</span></div>`;
+    historyList.classList.add('is-empty');
+    historyList.innerHTML=`<div class="hist-empty">这里还空空的～ (｡•́︿•̀｡)<br>快去生成你的第一个出行方案吧，之后就能在这里回顾啦！</div>`;
     return;
   }
+  historyList.classList.remove('is-empty');
   historyList.innerHTML = hist.map(h=>`
     <div class="hist-card">
       <div class="hist-head">
@@ -1412,14 +1786,9 @@ function renderHistoryPage(){
 }
 
 window.histView = (id)=>{
-  const h = JSON.parse(localStorage.getItem(HIST_KEY)||'[]').find(x=>x.id===id);
+  const h = S.history.find(x=>String(x.id)===String(id));
   if(h){ S.currentPlan=h.plan; switchPage('map'); }
 };
-window.histRerun = (id)=>{
-  const h = JSON.parse(localStorage.getItem(HIST_KEY)||'[]').find(x=>x.id===id);
-  if(h){ choosePlan(h.plan); switchPage('chat'); }
-};
-
 // ===== 接力浮层 =====
 async function openRelay(plan, audience){
   S.currentPlan = plan;
@@ -1533,7 +1902,6 @@ function renderExecResult(res, plan){
   card.querySelector('.js-share').onclick=()=>{
     navigator.clipboard?.writeText(res.itinerary.share_text);
     msgBot('✅ 行程文案已复制，去粘贴给家人吧！');
-    saveHistory(plan, res.itinerary.summary);
   };
   card.querySelector('.js-ask').onclick=()=>openAsk();
   chat.appendChild(card); scrollDown();
@@ -1570,8 +1938,14 @@ async function sendAsk(){
   const msg = askInput.value.trim();
   if(!msg) return;
   askInput.value='';
-  askChat.appendChild(node(`<div class="ask-bubble user">${esc(msg)}</div>`));
-  const loading = node(`<div class="ask-bubble bot"><span style="opacity:.4">Leo 思考中…</span></div>`);
+  askChat.appendChild(node(`<div class="ask-row ask-row-user">
+    <div class="ask-bubble user">${esc(msg)}</div>
+    ${userAvatarHTML('ask-avatar')}
+  </div>`));
+  const loading = node(`<div class="ask-row ask-row-bot">
+    ${leoAvatarHTML('ask-avatar')}
+    <div class="ask-bubble bot"><span style="opacity:.4">Leo 思考中…</span></div>
+  </div>`);
   askChat.appendChild(loading);
   askChat.scrollTop=askChat.scrollHeight;
   try {
@@ -1579,8 +1953,8 @@ async function sendAsk(){
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({message:msg,context:askContext}),
     });
-    loading.textContent=data.reply;
-  } catch(e){ loading.textContent='暂时无法回答，请稍后重试。'; }
+    loading.querySelector('.ask-bubble').textContent=normalizeLeoReply(data.reply);
+  } catch(e){ loading.querySelector('.ask-bubble').textContent='暂时无法回答，请稍后重试。'; }
   askChat.scrollTop=askChat.scrollHeight;
 }
 askSend.onclick=sendAsk;
@@ -1643,6 +2017,7 @@ const S_location = {
   address: DEFAULT_LOCATION.address,
   hasUserLocation: false,
   ready: false,
+  status: 'locating',
 };
 let locationReadyPromise = null;
 
@@ -1662,12 +2037,16 @@ function applyDefaultLocation(){
     ...DEFAULT_LOCATION,
     hasUserLocation: false,
     ready: true,
+    status: 'failed',
   });
   updateLocationUI();
   refreshLocationBoundViews();
 }
 
 async function getUserLocation(){
+  S_location.status = 'locating';
+  S_location.ready = false;
+  updateLocationUI();
   if(!navigator.geolocation){
     console.log('[位置] 浏览器不支持 Geolocation');
     applyDefaultLocation();
@@ -1706,6 +2085,7 @@ async function getUserLocation(){
 
         S_location.hasUserLocation = true;
         S_location.ready = true;
+        S_location.status = 'ready';
         updateLocationUI();
         refreshLocationBoundViews();
         resolve();
@@ -1735,7 +2115,7 @@ function updateLocationUI(){
 
 function updateDiscoverHeader(){
   const sub = document.querySelector('#page-discover .ph-sub');
-  const area = getLocationDisplayName();
+  const area = getLocationPlanningName();
   const label = area === '当前位置' ? area : `${area}商圈`;
   if(sub) sub.textContent = `${label} · 周边热门`;
 }
@@ -1762,7 +2142,7 @@ window.aiPlanFromText = async function(userText){
 
 // ===== P2：历史行程"重新规划"升级 =====
 window.histRerun = (id) => {
-  const h = JSON.parse(localStorage.getItem(HIST_KEY)||'[]').find(x=>x.id===id);
+  const h = S.history.find(x=>String(x.id)===String(id));
   if(!h) return;
   switchPage('chat');
   setTimeout(()=>{
@@ -1774,6 +2154,8 @@ window.histRerun = (id) => {
 };
 
 // ===== 初始化 =====
+renderWelcomeBubble();
+restoreAuth();
 updateLocationUI();
 initMapPage();
 // 先获取位置，再获取天气（天气需要城市信息）

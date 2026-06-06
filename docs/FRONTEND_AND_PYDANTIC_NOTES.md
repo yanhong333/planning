@@ -35,7 +35,7 @@ frontend/
   app.js
   styles.css
   config.js
-  assets/leo-avatar.png.png
+  assets/leo-avatar.png
 ```
 
 职责划分：
@@ -128,3 +128,22 @@ httpx==0.28.1
 5. 涉及密钥的能力必须放在 FastAPI 或 functions 中，不放进前端。
 
 后端新增结构化数据时，优先使用 Pydantic 模型或清晰的 dict schema，并在 README / DESIGN 中同步说明接口形状。
+
+## 账号与游客访问
+
+前端新增登录层，包含登录、注册、游客访问三个入口。登录和注册调用同源 `/api/auth/*`，成功后把 session token 存入 `localStorage`；游客访问不写入后端，也不持久化游客状态，刷新或离开页面后会重新显示登录/注册入口。
+
+FastAPI 后端使用 `backend/auth.py` 和 SQLite 保存账号，会话接口为：
+
+```txt
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/logout
+GET  /api/history
+POST /api/history
+```
+
+左上角 agent 头像会打开使用教程弹窗，弹窗内容与 `docs/USER_GUIDE.md` 保持一致。注册用户在 Leo 助手消息中显示账号首字母头像，背景色来自后端返回的 `avatar_color`；游客显示默认头像图片。注册用户历史行程走 `/api/history` 写入 SQLite，游客历史只存在页面内存中，刷新后清空并重新显示登录/注册入口。
+
+数据库路径由 `AUTH_DB_PATH` 控制，默认 `instance/leisure_done.sqlite3`。SQLite 和密码哈希使用 Python 标准库，因此 `requirements.txt` 不需要新增依赖。Cloudflare Pages Functions 部署若要保留账号功能，需要改接 D1 或独立后端 API。

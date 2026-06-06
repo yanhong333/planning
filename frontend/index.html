@@ -27,12 +27,9 @@
   <!-- ── 左侧导航栏（桌面） ── -->
   <aside class="sidebar" id="sidebar">
     <div class="sb-brand">
-      <div class="sb-logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#22c98a"/>
-          <path d="M8 12l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
+      <button class="sb-logo guide-trigger" id="guideTrigger" type="button" aria-label="打开使用教程">
+        <div class="leo-avatar sb-logo-avatar">L</div>
+      </button>
       <div>
         <div class="sb-name">闲时达</div>
         <div class="sb-en">Leisure Done</div>
@@ -67,9 +64,10 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5z" fill="#22c98a"/></svg>
         天安门商圈
       </div>
-      <div class="sb-leo">
-        <div class="leo-avatar">L</div>
-        <span>Leo 助手在线</span>
+      <div class="sb-leo" id="accountStatus">
+        <div class="leo-avatar account-avatar">L</div>
+        <span>游客访问</span>
+        <button class="account-logout" id="logoutBtn" type="button" hidden>退出</button>
         <span class="leo-dot"></span>
       </div>
     </div>
@@ -108,7 +106,7 @@
             <!-- 欢迎气泡 -->
             <div class="msg bot">
               <div class="leo-av-msg">L</div>
-              <div class="bubble">你好！我是 <strong>Leo</strong>，闲时达的规划助手。<br>说说你想怎么过这个下午，我来帮你安排好一切 🌿</div>
+              <div class="bubble" id="welcomeBubble"></div>
             </div>
             <div class="quick-examples" id="examples">
               <button class="chip" data-text="今天下午是空的，想和老婆孩子出去玩几个小时，别离家太远。孩子5岁，老婆最近在减肥">👨‍👩‍👧 家庭 · 带老婆孩子</button>
@@ -216,6 +214,37 @@
 
 <div class="overlay-mask" id="relayMask" hidden>
   <div class="overlay-card relay-card-inner" id="relayCard"></div>
+</div>
+
+<div class="guide-mask" id="guideMask" hidden>
+  <div class="guide-card" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <button class="guide-close" id="guideClose" type="button" aria-label="关闭使用教程">×</button>
+    <div class="guide-content" id="guideContent"></div>
+  </div>
+</div>
+
+<div class="auth-mask" id="authMask" hidden>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="leo-avatar auth-avatar">L</div>
+      <div class="auth-title">
+        <div class="auth-name">闲时达</div>
+        <div class="auth-en">Leisure Done</div>
+      </div>
+    </div>
+    <div class="auth-subtitle">登录后继续使用闲时达，也可以先以游客访问。</div>
+    <div class="auth-tabs" role="tablist">
+      <button class="active" type="button" data-auth-mode="login">登录</button>
+      <button type="button" data-auth-mode="register">注册</button>
+    </div>
+    <form class="auth-form" id="authForm">
+      <input id="authUsername" type="text" autocomplete="username" placeholder="账号" maxlength="32">
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="密码" maxlength="128">
+      <button class="auth-submit" id="authSubmit" type="submit">登录</button>
+    </form>
+    <button class="guest-btn" id="guestBtn" type="button">游客访问</button>
+    <div class="auth-error" id="authError" role="alert"></div>
+  </div>
 </div>
 
 <script src="app.js"></script>
