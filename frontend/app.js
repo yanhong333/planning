@@ -39,41 +39,213 @@ const acContent   = $('acContent');
 function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
 function node(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; }
-const IS_FILE_MODE = window.location.protocol === 'file:';
-const IS_BACKEND_ORIGIN = (
-  window.location.protocol === 'http:' &&
-  ['127.0.0.1', 'localhost'].includes(window.location.hostname) &&
-  window.location.port === '8848'
-);
-const USE_MOCK_API = IS_FILE_MODE || !IS_BACKEND_ORIGIN;
-const BACKEND_API_ORIGIN = 'http://127.0.0.1:8848';
 
-async function apiJson(url, options = {}){
-  if(!USE_MOCK_API){
-    const response = await fetch(url, options);
-    if(!response.ok) throw new Error(`Request failed: ${response.status}`);
-    return response.json();
-  }
+const CFG = () => window.APP_CONFIG || {};
 
-  if(url.startsWith('/api/')){
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 1200);
-      const response = await fetch(`${BACKEND_API_ORIGIN}${url}`, {
-        ...options,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if(response.ok) return response.json();
-    } catch(e) {
-      // Fall back to local mock when the backend is not running.
+// ── 后端 API（有后端时走后端，否则跳过）──
+const BACKEND_ORIGIN = 'http://127.0.0.1:8848';
+async function tryBackend(url, options = {}){
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2000);
+    const r = await fetch(BACKEND_ORIGIN + url, { ...options, signal: ctrl.signal });
+    clearTimeout(t);
+    if(r.ok) return r.json();
+  } catch(e) { /* 后端不可用，忽略 */ }
+  return null;
+}
+
+// ── 高德 REST POI 搜索（5 秒超时，失败静默返回空数组）──
+async function amapPoiSearch(keywords, types = '', city = '北京'){
+  const key = CFG().AMAP_REST_KEY;
+  if(!key) return [];
+  const params = new URLSearchParams({
+    key, keywords, types, city, offset: '6', output: 'json'
+  });
+  const url = `https://restapi.amap.com/v3/place/text?${params}`;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+    const data = await r.json();
+    if(data.status === '1' && data.pois?.length){
+      return data.pois.map(p => ({
+        name: p.name,
+        address: p.address || '',
+        type: p.type || '',
+        lat: parseFloat((p.location||'0,0').split(',')[1]) || 0,
+        lng: parseFloat((p.location||'0,0').split(',')[0]) || 0,
+        rating: parseFloat(p.biz_ext?.rating) || 4.5,
+        cost: parseInt(p.biz_ext?.cost) || 0,
+      }));
     }
+    return [];
+  } catch(e){ return []; }  // 超时或 CORS 失败，静默返回空，DeepSeek 用自身知识兜底
+}
+
+// ── DeepSeek 直接调用 ──
+async function callDeepSeek(systemPrompt, userContent, jsonMode = false){
+  const key = CFG().DEEPSEEK_API_KEY;
+  if(!key) throw new Error('未配置 DEEPSEEK_API_KEY');
+  const body = {
+    model: CFG().DEEPSEEK_MODEL || 'deepseek-chat',
+    max_tokens: 2048,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userContent  },
+    ],
+  };
+  if(jsonMode) body.response_format = { type: 'json_object' };
+  const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if(!r.ok) throw new Error(`DeepSeek error ${r.status}: ${await r.text()}`);
+  const d = await r.json();
+  return d.choices[0].message.content;
+}
+
+// ── 核心：用 DeepSeek + 高德 POI 生成真实规划方案 ──
+async function aiPlanFromText(userText){
+  const city = CFG().USER_CITY || '北京';
+  const loc  = CFG().USER_LOCATION || '望京';
+
+  // Step 1: DeepSeek 提取意图关键词（快，无 POI）
+  const intentJson = await callDeepSeek(
+    `你是本地生活规划助手，从用户描述中提取关键信息，返回 JSON，格式：
+{"scene":"family|friends|couple|solo","party_size":数字,"duration_hours":数字,
+"has_child":布尔,"child_age":数字或null,"spouse_diet":"low_cal|normal|null",
+"activity_keywords":["关键词1","关键词2"],"food_keywords":["关键词1"],
+"start_time":"HH:MM","constraints":["简要约束1","简要约束2"]}`,
+    userText,
+    true
+  );
+  let intent;
+  try { intent = JSON.parse(intentJson); } catch(e) { intent = {}; }
+
+  // Step 2: 并行搜索高德 POI（活动 + 餐厅）
+  const actKeyword = (intent.activity_keywords||[]).join(' ') || '亲子乐园 公园 展览';
+  const foodKeyword = (intent.food_keywords||[]).join(' ') || '餐厅';
+  const searchLoc = `${loc}${city}`;
+
+  const [actPois, foodPois] = await Promise.all([
+    amapPoiSearch(actKeyword + ' ' + loc, '060000|110000|140000', city),
+    amapPoiSearch(foodKeyword + ' ' + loc, '050000', city),
+  ]);
+
+  // Step 3: DeepSeek 结合 POI 数据生成完整方案
+  const poiContext = `
+附近活动/景点（高德真实数据）：
+${actPois.slice(0,5).map((p,i)=>`${i+1}. ${p.name}，${p.address}，评分${p.rating}，人均¥${p.cost||'未知'}`).join('\n') || '暂无数据'}
+
+附近餐厅（高德真实数据）：
+${foodPois.slice(0,5).map((p,i)=>`${i+1}. ${p.name}，${p.address}，评分${p.rating}，人均¥${p.cost||'未知'}`).join('\n') || '暂无数据'}`;
+
+  const planJson = await callDeepSeek(
+  const planJson = await callDeepSeek(
+    `你是「闲时达」本地生活规划 AI Leo。根据用户需求和高德 POI 数据，生成 2 套个性化出行方案。
+
+只返回纯 JSON（不要任何 markdown 代码块），格式如下：
+{"intent_summary":"一句话总结","constraints":[{"key":"约束名","reason":"推断原因"}],"plans":[{"id":"plan_1","title":"方案名","highlights":["亮点1","亮点2","亮点3"],"total_minutes":180,"total_cost":200,"steps":[{"order":1,"slot":"活动","time_range":"14:00-15:30","venue_name":"场所名","venue_address":"详细地址","venue_lat":40.003,"venue_lng":116.472,"why":"具体理由"}]}]}
+
+规则：①优先从 POI 数据选真实场所 ②POI 为空时用你对北京望京的知识推断真实场所（坐标精确，望京 lat:39.99-40.01 lng:116.46-116.50）③why 必须结合用户约束 ④生成 2 套风格不同方案 ⑤total_cost 是整个行程人均费用（元）。`,
+    true
+  );
+
+  let aiResult;
+  try { aiResult = JSON.parse(planJson); } catch(e) {
+    // DeepSeek 偶尔多包一层 markdown，尝试提取
+    const m = planJson.match(/\{[\s\S]*\}/);
+    if(m) aiResult = JSON.parse(m[0]); else throw new Error('AI 返回格式错误');
   }
 
-  if(USE_MOCK_API){
-    await new Promise(resolve => setTimeout(resolve, 250));
-    return mockApi(url, options);
+  // Step 4: 把 AI 结果转换成前端 Plan 标准格式
+  const plans = (aiResult.plans || []).map(p => ({
+    id: p.id || 'ai_plan',
+    title: p.title || 'AI 规划方案',
+    theme: 'ai',
+    highlights: p.highlights || [],
+    total_minutes: p.total_minutes || 180,
+    total_cost: p.total_cost || 200,
+    steps: (p.steps || []).map((s, i) => {
+      // 尝试从 POI 数据匹配坐标（AI 给的 lat/lng 优先，POI 查到的兜底）
+      const allPois = [...actPois, ...foodPois];
+      const matched = allPois.find(poi => s.venue_name && poi.name.includes(s.venue_name.slice(0,4)));
+      return {
+        order: s.order || i+1,
+        slot: s.slot || '活动',
+        time_range: s.time_range || '',
+        why: s.why || '',
+        venue: {
+          id: `ai_venue_${i}`,
+          name: s.venue_name || '待定',
+          address: s.venue_address || matched?.address || '',
+          lat: s.venue_lat || matched?.lat || 40.0000,
+          lng: s.venue_lng || matched?.lng || 116.4700,
+          rating: matched?.rating || 4.5,
+          price_per_person: matched?.cost || Math.round((p.total_cost||200)/(p.steps?.length||2)),
+          category: s.slot === '正餐' ? '餐厅' : '活动',
+          tags: [],
+          kid_friendly: intent.has_child || false,
+        }
+      };
+    }),
+  }));
+
+  // Step 5: 转换 intent 结构
+  const members = [];
+  if(intent.scene === 'family'){
+    if(intent.spouse_diet) members.push({ role:'spouse', note: intent.spouse_diet === 'low_cal' ? '最近在减肥' : '' });
+    if(intent.has_child)   members.push({ role:'child', age: intent.child_age || 5 });
   }
+
+  const constraints = (aiResult.constraints || []).map(c => ({
+    key: c.key || 'custom', value: 'true', source: 'inferred', reason: c.reason || ''
+  }));
+
+  return {
+    session_id: 'ai_' + Date.now(),
+    intent: {
+      scene: intent.scene || 'family',
+      members,
+      party_size: intent.party_size || 2,
+      duration_hours: intent.duration_hours || 4,
+      start_time: intent.start_time || '14:00',
+      location: loc,
+      raw_text: userText,
+      constraints,
+    },
+    plans,
+    recommended_plan_id: plans[0]?.id || '',
+  };
+}
+
+// ── apiJson：优先真实 AI，后端/mock 作兜底 ──
+async function apiJson(url, options = {}){
+  // /api/plan 永远走真实 DeepSeek + 高德，不走 mock
+  if(url.includes('/api/plan')){
+    let text = '';
+    try { text = JSON.parse(options.body || '{}').text || ''; } catch(e) {}
+    return aiPlanFromText(text);
+  }
+
+  // /api/chat 走 DeepSeek 直接回答
+  if(url.includes('/api/chat')){
+    let body = {};
+    try { body = JSON.parse(options.body || '{}'); } catch(e) {}
+    const reply = await callDeepSeek(
+      '你是「闲时达」本地生活助手 Leo，回答关于路线、活动、餐厅的问题，简洁有用，100 字内，不说"打开地图"。',
+      body.message + (body.context ? `\n当前方案：${body.context}` : '')
+    ).catch(() => '稍后再试，Leo 正在思考中…');
+    return { reply };
+  }
+
+  // 其余接口尝试后端，后端无响应走 mock
+  const backendResult = await tryBackend(url, options);
+  if(backendResult) return backendResult;
+  return mockApi(url, options);
 }
 
 let amapReadyPromise = null;
