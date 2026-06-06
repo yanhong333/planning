@@ -6,7 +6,7 @@ Usage:
 Then open http://localhost:8080
 
 This starts the FastAPI app, which serves both frontend files and /api routes
-from the same origin. Secrets are read from .env by backend/app/config.py.
+from the same origin. Secrets are read from .env by backend/config.py.
 """
 from __future__ import annotations
 
@@ -28,4 +28,4 @@ if __name__ == "__main__":
     if os.environ.get("OPEN_BROWSER", "1") == "1":
         webbrowser.open(url)
 
-    uvicorn.run("backend.app.main:app", host=host, port=port, reload=False)
+    uvicorn.run("backend.main:app", host=host, port=port, reload=False)

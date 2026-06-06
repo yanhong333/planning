@@ -98,7 +98,7 @@ POST /api/amap/walking
 ## 项目结构
 
 ```txt
-backend/app/
+backend/
   main.py                FastAPI 路由与前端托管
   config.py              环境变量与 .env 配置
   services/amap.py       高德 Web Service API 封装

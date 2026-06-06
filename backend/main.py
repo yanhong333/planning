@@ -35,7 +35,7 @@ app.add_middleware(
 _SESSIONS: dict[str, object] = {}
 
 _FRONTEND_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend")
+    os.path.dirname(os.path.dirname(__file__)), "frontend")
 
 
 # ============ 请求体 ============
