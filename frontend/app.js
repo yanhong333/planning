@@ -146,8 +146,9 @@ async function callDeepSeek(systemPrompt, userContent, jsonMode = false){
 
 // ── 核心：用 DeepSeek + 高德 POI 生成真实规划方案 ──
 async function aiPlanFromText(userText){
-  const city = CFG().USER_CITY || '北京';
-  const loc  = CFG().USER_LOCATION || '望京';
+  // 优先使用真实定位，兜底使用 config.js 默认值
+  const city = S_location.city || CFG().USER_CITY || '北京';
+  const loc  = S_location.district || CFG().USER_LOCATION || '望京';
 
   // Step 1: DeepSeek 提取意图关键词（快，无 POI）
   const intentJson = await callDeepSeek(
@@ -186,7 +187,7 @@ ${foodPois.slice(0,5).map((p,i)=>`${i+1}. ${p.name}，${p.address}，评分${p.r
 只返回纯 JSON（不要任何 markdown 代码块），格式如下：
 {"intent_summary":"一句话总结","constraints":[{"key":"约束名","reason":"推断原因"}],"plans":[{"id":"plan_1","title":"方案名","highlights":["亮点1","亮点2","亮点3"],"total_minutes":180,"total_cost":200,"steps":[{"order":1,"slot":"活动","time_range":"14:00-15:30","venue_name":"场所名","venue_address":"详细地址","venue_lat":40.003,"venue_lng":116.472,"why":"具体理由"}]}]}
 
-规则：①优先从 POI 数据选真实场所 ②POI 为空时用你对北京望京的知识推断真实场所（坐标精确，望京 lat:39.99-40.01 lng:116.46-116.50）③why 必须结合用户约束 ④生成 2 套风格不同方案 ⑤total_cost 是整个行程人均费用（元）。`,
+规则：①优先从 POI 数据选真实场所 ②POI 为空时用你对用户当前位置（${city} ${loc}）的知识推断真实场所和准确坐标 ③why 必须结合用户约束 ④生成 2 套风格不同方案 ⑤total_cost 是整个行程人均费用（元）。`,
     `用户需求：${userText}\n\n意图解析：${JSON.stringify(intent)}\n\n${poiContext}`,
     true
   );
@@ -790,7 +791,8 @@ async function triggerStepReplace(planRef, stepIdx, btn){
   altPanel.innerHTML = '<div class="step-alt-title">⏳ 正在搜索同类场所…</div>';
 
   try {
-    const prompt = `用户想替换行程中的"${step.slot}：${step.venue.name}"，帮我推荐 2-3 个北京望京商圈附近的同类${step.slot === '正餐' ? '餐厅' : '活动/场所'}。
+    const nearLoc = `${S_location.district||S_location.city||'当前位置'}附近`;
+    const prompt = `用户想替换行程中的"${step.slot}：${step.venue.name}"，帮我推荐 2-3 个${nearLoc}的同类${step.slot === '正餐' ? '餐厅' : '活动/场所'}。
 只返回 JSON 数组（不要 markdown），格式：
 [{"name":"场所名","address":"地址","why":"推荐理由（结合原方案约束：${planRef.highlights?.join('、')||''}）","lat":40.001,"lng":116.470}]`;
 
@@ -899,7 +901,10 @@ async function initMapWithAmap(){
   }
 
   mapTitle.textContent = plan.title || '路线地图';
-  const home = {lat:40.0000,lng:116.4700,name:'望京'};
+  const homeLat  = S_location.lat  || 40.0000;
+  const homeLng  = S_location.lng  || 116.4700;
+  const homeName = S_location.district || S_location.city || '出发点';
+  const home = {lat: homeLat, lng: homeLng, name: homeName};
   createAmapMarker(home,'<div class="amap-pin home">🏠</div>','出发点');
 
   const routePoints = [home];
@@ -933,7 +938,9 @@ function initMapWithLeaflet(){
   }
 
   if(!S.mapInstance || S.mapInstance._type !== 'leaflet'){
-    const lmap = L.map('map').setView([40.0000,116.4700],14);
+    const centerLat = S_location.lat || 40.0000;
+    const centerLng = S_location.lng || 116.4700;
+    const lmap = L.map('map').setView([centerLat, centerLng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
       attribution:'© OpenStreetMap', maxZoom:19
     }).addTo(lmap);
@@ -958,13 +965,15 @@ function initMapWithLeaflet(){
 
   mapTitle.textContent = plan.title || '路线地图';
 
-  // 出发点
-  const homeMarker = L.marker([40.0000,116.4700],{
+  // 出发点（使用真实坐标）
+  const hLat = S_location.lat || 40.0000;
+  const hLng = S_location.lng || 116.4700;
+  const homeMarker = L.marker([hLat, hLng],{
     icon: L.divIcon({html:'<div class="amap-pin home" style="background:#22c98a;color:#fff;border-radius:50%;width:30px;height:30px;display:grid;place-items:center;font-size:14px;box-shadow:0 2px 8px rgba(34,201,138,.4)">🏠</div>',iconSize:[30,30],className:'',iconAnchor:[15,30]})
-  }).addTo(lmap);
+  }).bindPopup(`<div class="map-popup"><strong>出发点</strong><br>📍 ${S_location.address || S_location.district || '当前位置'}</div>`).addTo(lmap);
   S.mapLayers.push(homeMarker);
 
-  const points = [[40.0000,116.4700]];
+  const points = [[hLat, hLng]];
   const stepCards = [];
 
   plan.steps.forEach((step,i)=>{
@@ -1380,7 +1389,7 @@ async function fetchWeather(){
     const ctrl = new AbortController();
     setTimeout(()=>ctrl.abort(), 4000);
     const r = await fetch(
-      `https://restapi.amap.com/v3/weather/weatherInfo?key=${key}&city=${encodeURIComponent(CFG().USER_CITY||'北京')}&output=json`,
+      `https://restapi.amap.com/v3/weather/weatherInfo?key=${key}&city=${encodeURIComponent(S_location.city||CFG().USER_CITY||'北京')}&output=json`,
       { signal: ctrl.signal }
     );
     const d = await r.json();
@@ -1406,11 +1415,86 @@ async function fetchWeather(){
   } catch(e){ /* 天气获取失败，静默忽略 */ }
 }
 
-// 把天气注入 aiPlanFromText 的 userText 上下文
+// ===== 真实地理位置获取 =====
+// S_location 存储当前真实位置，会覆盖 config.js 里的默认值
+const S_location = {
+  lat: null,
+  lng: null,
+  city: CFG().USER_CITY || '北京',
+  district: CFG().USER_LOCATION || '望京',
+  address: '',
+  ready: false,
+};
+
+async function getUserLocation(){
+  if(!navigator.geolocation){
+    console.log('[位置] 浏览器不支持 Geolocation');
+    return;
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        S_location.lat = latitude;
+        S_location.lng = longitude;
+
+        // 高德逆地理编码：坐标 → 区/街道/城市
+        const key = CFG().AMAP_REST_KEY;
+        if(key){
+          try {
+            const ctrl = new AbortController();
+            setTimeout(() => ctrl.abort(), 5000);
+            const r = await fetch(
+              `https://restapi.amap.com/v3/geocode/regeo?key=${key}&location=${longitude},${latitude}&output=json`,
+              { signal: ctrl.signal }
+            );
+            const d = await r.json();
+            const comp = d?.regeocode?.addressComponent;
+            if(comp){
+              S_location.city     = comp.city || comp.province || S_location.city;
+              S_location.district = comp.district || comp.township || S_location.district;
+              S_location.address  = d.regeocode.formatted_address || '';
+            }
+          } catch(e){ /* 逆地理失败，保留默认 */ }
+        }
+
+        S_location.ready = true;
+        updateLocationUI();
+        resolve();
+      },
+      (err) => {
+        // 用户拒绝或超时，保持默认望京
+        console.log('[位置] 获取失败:', err.message);
+        S_location.ready = true;
+        resolve();
+      },
+      { timeout: 8000, maximumAge: 300000 }
+    );
+  });
+}
+
+function updateLocationUI(){
+  // 更新侧边栏和移动端顶栏的位置显示
+  const displayName = S_location.district || S_location.city || '当前位置';
+  document.querySelectorAll('.sb-loc').forEach(el => {
+    el.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5z" fill="#22c98a"/></svg>${displayName}`;
+  });
+  document.querySelectorAll('.mob-loc').forEach(el => {
+    el.textContent = `📍 ${displayName}`;
+  });
+}
+
+// 把天气注入 aiPlanFromText 的 userText 上下文，同时注入真实位置
 const _origAiPlan = aiPlanFromText;
 window.aiPlanFromText = async function(userText){
-  const textWithWeather = S_weather ? `${userText}（当前天气：${S_weather}）` : userText;
-  return _origAiPlan(textWithWeather);
+  const locInfo = S_location.ready && S_location.address
+    ? `（用户当前位置：${S_location.address}，城市：${S_location.city}）`
+    : S_location.ready && S_location.district
+    ? `（用户当前位置：${S_location.district}，城市：${S_location.city}）`
+    : '';
+  const weatherInfo = S_weather ? `（当前天气：${S_weather}）` : '';
+  return _origAiPlan(userText + locInfo + weatherInfo);
 };
 
 // ===== P2：历史行程"重新规划"升级 =====
@@ -1418,16 +1502,19 @@ window.histRerun = (id) => {
   const h = JSON.parse(localStorage.getItem(HIST_KEY)||'[]').find(x=>x.id===id);
   if(!h) return;
   switchPage('chat');
-  // 延迟一帧让页面切换完成，然后把旧方案描述填入输入框触发重新规划
   setTimeout(()=>{
     const desc = `${h.title}（${h.steps.join('、')}）— 帮我重新规划一个类似的下午`;
     inputEl.value = desc;
     inputEl.focus();
-    // 同时自动触发，模拟用户发送
     doPlan(desc);
   }, 150);
 };
 
 // ===== 初始化 =====
 initMapPage();
-fetchWeather();
+// 先获取位置，再获取天气（天气需要城市信息）
+getUserLocation().then(() => {
+  // 用真实城市更新天气查询
+  fetchWeather();
+});
+// 天气查询也用真实城市（异步竞争，fetchWeather 内部读 S_location.city）
