@@ -2046,6 +2046,7 @@ function renderExecResult(res, plan){
       <div class="share-box">${esc(res.itinerary.share_text)}</div>
       <button class="share-btn js-share">📤 复制行程，转发给家人 / 朋友</button>
       <button class="ask-btn js-ask">💬 问 Leo：路线怎么走 / 有什么建议</button>
+      <button class="btn btn-primary js-poster" style="width:100%;margin-top:8px">🖼️ 生成行程海报</button>
     </div></div>`);
 
   card.querySelector('.js-share').onclick=()=>{
@@ -2053,6 +2054,7 @@ function renderExecResult(res, plan){
     msgBot('✅ 行程文案已复制，去粘贴给家人吧！');
   };
   card.querySelector('.js-ask').onclick=()=>openAsk();
+  card.querySelector('.js-poster').onclick=()=>generatePoster(plan, res);
   chat.appendChild(card); scrollDown();
 
   // stagger 逐条动画：每隔 120ms 滑入一项
@@ -2067,29 +2069,16 @@ function renderExecResult(res, plan){
       </div>`);
       wrap.appendChild(el);
       scrollDown();
-    }, idx * 120);
+    }, idx * 100);
   });
 
   S.currentPlan = plan;
-  const delay = res.items.length * 120 + 400;
+  const delay = res.items.length * 100 + 400;
   setTimeout(()=>{
     msgBot('路线已就绪 🗺️　切换到「路线地图」页可查看全程和步行距离。');
-    // 执行完成后提示生成海报
-    setTimeout(()=>{
-      const posterBubble = node(`<div class="msg bot" style="gap:6px">
-        <div class="leo-av-msg">L</div>
-        <div class="bubble">
-          想生成一张行程海报发朋友圈吗？
-          <div style="margin-top:8px">
-            <button class="btn btn-primary js-poster" style="width:100%;font-size:13px;padding:9px">🖼️ 生成行程海报</button>
-          </div>
-        </div>
-      </div>`);
-      posterBubble.querySelector('.js-poster').onclick = () => generatePoster(plan, res);
-      chat.appendChild(posterBubble); scrollDown();
-    }, 800);
   }, delay);
 }
+
 
 // ===== 行程海报生成（Canvas） =====
 function generatePoster(plan, res){
