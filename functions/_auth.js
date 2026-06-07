@@ -6,6 +6,8 @@ const AVATAR_COLORS = [
   "#27ae60", "#2980b9", "#8e44ad", "#d35400",
 ];
 
+const PBKDF2_ITERATIONS = 100000;
+
 export function db(env) {
   return env.DB || null;
 }
@@ -109,8 +111,14 @@ function hexToBytes(hex) {
   return out;
 }
 
-export async function hashPassword(password, saltHex = "") {
+export function passwordIterations(row = {}) {
+  const value = Number.parseInt(row.password_iterations ?? row.iterations ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? Math.min(value, PBKDF2_ITERATIONS) : PBKDF2_ITERATIONS;
+}
+
+export async function hashPassword(password, saltHex = "", iterations = PBKDF2_ITERATIONS) {
   const salt = saltHex ? hexToBytes(saltHex) : crypto.getRandomValues(new Uint8Array(16));
+  const rounds = Math.min(Number.parseInt(iterations, 10) || PBKDF2_ITERATIONS, PBKDF2_ITERATIONS);
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -119,7 +127,7 @@ export async function hashPassword(password, saltHex = "") {
     ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 200000 },
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds },
     key,
     256,
   );
@@ -159,4 +167,3 @@ export async function requireUser(database, request) {
   if (!user) return { response: json({ detail: "Authentication required" }, 401), user: null };
   return { response: null, user };
 }
-

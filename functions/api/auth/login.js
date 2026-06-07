@@ -4,6 +4,7 @@ import {
   ensureAuthSchema,
   hashPassword,
   missingDb,
+  passwordIterations,
   publicUser,
   timingSafeEqual,
   validateUsername,
@@ -28,7 +29,7 @@ export async function onRequestPost({ request, env }) {
   ).bind(username).first();
   if (!row) return json({ detail: "Invalid username or password" }, 401);
 
-  const { hash } = await hashPassword(String(body.password || ""), row.password_salt);
+  const { hash } = await hashPassword(String(body.password || ""), row.password_salt, passwordIterations(row));
   if (!timingSafeEqual(hash, row.password_hash)) {
     return json({ detail: "Invalid username or password" }, 401);
   }
@@ -36,4 +37,3 @@ export async function onRequestPost({ request, env }) {
   const token = await createSession(database, user.id);
   return json({ ok: true, user, token });
 }
-
