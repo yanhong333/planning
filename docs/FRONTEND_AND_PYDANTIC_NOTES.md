@@ -148,7 +148,7 @@ GET  /api/history
 POST /api/history
 ```
 
-左上角 agent 头像会打开使用教程弹窗，弹窗内容与 `docs/USER_GUIDE.md` 保持一致。注册用户在 Leo 助手消息中显示账号首字母头像，背景色来自后端返回的 `avatar_color`；游客显示默认头像图片。注册用户历史行程走 `/api/history` 写入 SQLite，游客历史只存在页面内存中，刷新后清空并重新显示登录/注册入口。
+游客访问或新用户首次注册成功后，会自动弹出使用教程；左上角 agent 头像也可以随时重新打开教程，弹窗内容与 `docs/USER_GUIDE.md` 保持一致。注册用户在 Leo 助手消息中显示账号首字母头像，背景色来自后端返回的 `avatar_color`；游客显示默认头像图片。注册用户历史行程走 `/api/history` 写入 SQLite，游客历史只存在页面内存中，刷新后清空并重新显示登录/注册入口。
 
 数据库路径由 `AUTH_DB_PATH` 控制，默认 `instance/leisure_done.sqlite3`。SQLite 和密码哈希使用 Python 标准库，因此 `requirements.txt` 不需要新增依赖。本地 SQLite 数据库和 `instance/` 目录已被 `.gitignore` 忽略，不需要上传。SQLite 只用于本地 `serve.py` 调试。
 

@@ -1142,7 +1142,13 @@ body {
 .guide-content h1 {
   font-size: 22px;
   line-height: 1.25;
+  margin: 0 42px 6px 0;
+}
+.guide-content .guide-hint {
   margin: 0 42px 20px 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-3);
 }
 .guide-content h2 {
   font-size: 15px;

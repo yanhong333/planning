@@ -120,6 +120,8 @@ function syncViewportLayout(){
 
 const USER_GUIDE_MD = `# 闲时达 使用教程
 
+关闭后可以点击左上角找到我 (｡•̀ᴗ-)✧
+
 ## 1. 登录或游客访问
 
 打开页面后，你可以注册/登录账号，也可以先选择游客访问。
@@ -163,6 +165,7 @@ function renderGuideMarkdown(markdown){
   const lines = markdown.trim().split(/\r?\n/);
   const html = [];
   let inList = false;
+  let titleRendered = false;
   const closeList = () => {
     if(inList){
       html.push('</ul>');
@@ -181,6 +184,7 @@ function renderGuideMarkdown(markdown){
     } else if(text.startsWith('# ')){
       closeList();
       html.push(`<h1 id="guideTitle">${esc(text.slice(2))}</h1>`);
+      titleRendered = true;
     } else if(text.startsWith('- ')){
       if(!inList){
         html.push('<ul>');
@@ -189,7 +193,9 @@ function renderGuideMarkdown(markdown){
       html.push(`<li>${esc(text.slice(2))}</li>`);
     } else {
       closeList();
-      html.push(`<p>${esc(text)}</p>`);
+      const pClass = titleRendered ? ' class="guide-hint"' : '';
+      html.push(`<p${pClass}>${esc(text)}</p>`);
+      titleRendered = false;
     }
   });
   closeList();
@@ -820,6 +826,7 @@ function hideAuthGate(){
 }
 
 function saveAuthSession(data){
+  const shouldOpenGuide = authMode === 'register';
   S.auth.token = data.token || '';
   S.auth.user = data.user || null;
   S.auth.guest = false;
@@ -830,6 +837,7 @@ function saveAuthSession(data){
   loadHistory().then(()=> {
     if($('page-history')?.classList.contains('active')) renderHistoryPage();
   });
+  if(shouldOpenGuide) setTimeout(openGuide, 120);
 }
 
 function continueAsGuest(){
@@ -840,6 +848,7 @@ function continueAsGuest(){
   S.history = [];
   hideAuthGate();
   if($('page-history')?.classList.contains('active')) renderHistoryPage();
+  setTimeout(openGuide, 120);
 }
 
 async function submitAuth(event){
