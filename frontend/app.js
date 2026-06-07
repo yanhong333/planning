@@ -2134,128 +2134,96 @@ function renderExecResult(res, plan){
 
 // ===== 行程海报生成（Canvas） =====
 function generatePoster(plan, res){
-  const W = 750, H = 1080;
+  const W = 900, H = 1200;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
+  const theme = posterTheme(S.scene, S_holiday);
+  const steps = (plan.steps || []).slice(0, 4);
+  const highlights = uniqueList([...(plan.highlights || []), S_holiday?.name ? `${S_holiday.name}氛围` : '']).slice(0, 4);
+  const dateStr = posterDateLabel();
+  const title = plan.title || '我的出行方案';
 
-  // 背景渐变
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#f0fdf8');
-  bg.addColorStop(1, '#e8f5ef');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
+  drawPosterBackground(ctx, W, H, theme);
+  drawPosterBrand(ctx, W, dateStr, theme);
 
-  // 顶部装饰条
-  const header = ctx.createLinearGradient(0, 0, W, 0);
-  header.addColorStop(0, '#22c98a');
-  header.addColorStop(1, '#18b67a');
-  ctx.fillStyle = header;
-  roundRect(ctx, 0, 0, W, 10, 0);
-  ctx.fill();
+  ctx.fillStyle = theme.ink;
+  ctx.font = '800 48px "PingFang SC", "Microsoft YaHei", sans-serif';
+  const titleBottom = drawWrappedText(ctx, title, 64, 196, W - 128, 62, 2);
 
-  // Logo 区
-  ctx.fillStyle = '#22c98a';
-  ctx.font = 'bold 26px "PingFang SC", "Microsoft YaHei", sans-serif';
-  ctx.fillText('闲时达 Leisure Done', 48, 72);
+  ctx.fillStyle = theme.muted;
+  ctx.font = '22px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText(posterMetaText(plan), 64, titleBottom + 34);
 
-  ctx.fillStyle = '#9ba3af';
-  ctx.font = '18px "PingFang SC", "Microsoft YaHei", sans-serif';
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
-  ctx.fillText(dateStr, 48, 100);
-
-  // 方案标题卡
-  ctx.fillStyle = '#fff';
-  roundRect(ctx, 40, 128, W - 80, 90, 16);
-  ctx.fill();
-  addShadow(ctx);
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = '#1a1d23';
-  ctx.font = 'bold 28px "PingFang SC", "Microsoft YaHei", sans-serif';
-  ctx.fillText(plan.title || '我的出行方案', 64, 174);
-
-  ctx.fillStyle = '#5f6775';
-  ctx.font = '17px "PingFang SC", "Microsoft YaHei", sans-serif';
-  const metaText = `约 ${Math.round((plan.total_minutes||180)/60)} 小时  ·  预估人均 ¥${plan.total_cost||'—'}`;
-  ctx.fillText(metaText, 64, 202);
-
-  // 步骤时间线
-  const steps = plan.steps || [];
-  const startY = 256;
-  const lineH = 120;
-  steps.forEach((step, i) => {
-    const y = startY + i * lineH;
-    const v = step.venue || {};
-
-    // 连接线
-    if(i < steps.length - 1){
-      ctx.strokeStyle = '#d1fae5';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(76, y + 44);
-      ctx.lineTo(76, y + lineH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // 步骤圆点
-    ctx.fillStyle = i === 0 ? '#22c98a' : '#ff8c42';
-    ctx.beginPath();
-    ctx.arc(76, y + 28, 14, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 13px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(String(i + 1), 76, y + 33);
-    ctx.textAlign = 'left';
-
-    // 时间
-    ctx.fillStyle = '#22c98a';
-    ctx.font = 'bold 15px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText(step.time_range || '', 108, y + 22);
-
-    // 场所名
-    ctx.fillStyle = '#1a1d23';
-    ctx.font = 'bold 20px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText(truncate(v.name || '', 14), 108, y + 46);
-
-    // 类型标签
-    ctx.fillStyle = '#edfaf4';
-    roundRect(ctx, 108, y + 56, 70, 26, 13);
-    ctx.fill();
-    ctx.fillStyle = '#18a872';
-    ctx.font = '13px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText(step.slot || '', 120, y + 74);
-
-    // 地址
-    ctx.fillStyle = '#9ba3af';
-    ctx.font = '14px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText(truncate(v.address || '', 20), 190, y + 74);
-  });
-
-  // 底部高亮标签
-  const highlightY = startY + steps.length * lineH + 20;
-  const highlights = (plan.highlights || []).slice(0, 3);
-  let tagX = 48;
+  let pillX = 64, pillY = titleBottom + 62;
   highlights.forEach(h => {
-    const tw = ctx.measureText(h).width + 28;
-    ctx.fillStyle = '#d1fae5';
-    roundRect(ctx, tagX, highlightY, tw, 32, 16);
-    ctx.fill();
-    ctx.fillStyle = '#18a872';
-    ctx.font = '14px "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText(h, tagX + 14, highlightY + 21);
-    tagX += tw + 10;
+    const pill = drawPosterPill(ctx, truncate(h, 10), pillX, pillY, theme);
+    pillX += pill + 12;
+    if(pillX > W - 220){ pillX = 64; pillY += 42; }
   });
 
-  // 底部品牌水印
-  ctx.fillStyle = '#c6f7e2';
-  ctx.font = '15px "PingFang SC", "Microsoft YaHei", sans-serif';
+  const cardY = Math.max(360, pillY + 72);
+  const cardH = 520;
+  drawPosterCard(ctx, 48, cardY, W - 96, cardH, 28);
+  ctx.fillStyle = theme.ink;
+  ctx.font = '800 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText('今日路线', 84, cardY + 58);
+
+  if(steps.length){
+    const lineLeft = 108;
+    const firstY = cardY + 112;
+    const rowH = 106;
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(lineLeft, firstY + 14);
+    ctx.lineTo(lineLeft, firstY + (steps.length - 1) * rowH + 14);
+    ctx.stroke();
+
+    steps.forEach((step, i) => {
+      const y = firstY + i * rowH;
+      const v = step.venue || {};
+      ctx.fillStyle = i === 0 ? theme.accent : theme.accent2;
+      ctx.beginPath();
+      ctx.arc(lineLeft, y + 14, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 17px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(i + 1), lineLeft, y + 20);
+      ctx.textAlign = 'left';
+
+      ctx.fillStyle = theme.accent;
+      ctx.font = '700 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(step.time_range || step.slot || '安排中', 146, y + 10);
+      ctx.fillStyle = theme.ink;
+      ctx.font = '800 25px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(truncate(v.name || step.slot || '待确认地点', 18), 146, y + 42);
+      ctx.fillStyle = theme.muted;
+      ctx.font = '18px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(truncate(v.address || step.why || 'Leo 会根据现场情况微调路线', 30), 146, y + 72);
+    });
+  } else {
+    ctx.fillStyle = theme.muted;
+    ctx.font = '22px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText('路线正在整理，稍后就能出发。', 84, cardY + 126);
+  }
+
+  const noteY = cardY + cardH + 28;
+  drawPosterCard(ctx, 48, noteY, W - 96, 148, 28);
+  ctx.fillStyle = theme.ink;
+  ctx.font = '800 24px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText('Leo 的小结', 84, noteY + 48);
+  ctx.fillStyle = theme.muted;
+  ctx.font = '20px "PingFang SC", "Microsoft YaHei", sans-serif';
+  drawWrappedText(ctx, posterNote(plan, res), 84, noteY + 82, W - 168, 30, 2);
+
+  ctx.fillStyle = theme.ink;
+  ctx.globalAlpha = 0.78;
+  ctx.font = '700 20px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('由 闲时达 · Leo 规划  |  Leisure Done', W / 2, H - 36);
+  ctx.fillText('闲时达 · Leo 为你规划', W / 2, H - 58);
+  ctx.globalAlpha = 1;
   ctx.textAlign = 'left';
 
   // 生成图片并展示
@@ -2263,12 +2231,136 @@ function generatePoster(plan, res){
   const wrapper = node(`<div class="msg bot" style="gap:6px">
     <div class="leo-av-msg">L</div>
     <div style="flex:1">
-      <div class="bubble" style="margin-bottom:8px">海报生成完成！长按或右键保存，发给朋友圈吧 🎉</div>
-      <img src="${dataUrl}" style="width:100%;max-width:320px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:block;cursor:pointer"
+      <div class="bubble" style="margin-bottom:8px">海报生成完成！长按或右键保存，发给朋友吧 🎉</div>
+      <img src="${dataUrl}" style="width:100%;max-width:360px;border-radius:16px;box-shadow:0 12px 32px rgba(15,23,42,.18);display:block;cursor:pointer"
            onclick="this.requestFullscreen?.()" title="点击全屏查看">
     </div>
   </div>`);
   chat.appendChild(wrapper); scrollDown();
+}
+
+function posterTheme(scene, holiday){
+  if(holiday){
+    return {
+      bg1:'#fff7ed', bg2:'#ecfeff', accent:'#e11d48', accent2:'#f59e0b',
+      ink:'#18202f', muted:'#64748b', line:'#fed7aa', pillBg:'#fff1f2'
+    };
+  }
+  const themes = {
+    friends: { bg1:'#ecfeff', bg2:'#fef3c7', accent:'#0891b2', accent2:'#fb7185', ink:'#172033', muted:'#667085', line:'#bae6fd', pillBg:'#e0f2fe' },
+    family:  { bg1:'#f0fdf4', bg2:'#fff7ed', accent:'#16a34a', accent2:'#f97316', ink:'#172033', muted:'#667085', line:'#bbf7d0', pillBg:'#dcfce7' },
+    solo:    { bg1:'#eff6ff', bg2:'#f7fee7', accent:'#2563eb', accent2:'#84cc16', ink:'#172033', muted:'#667085', line:'#bfdbfe', pillBg:'#dbeafe' },
+  };
+  return themes[scene] || { bg1:'#f8fafc', bg2:'#ecfeff', accent:'#14b8a6', accent2:'#f97316', ink:'#172033', muted:'#667085', line:'#ccfbf1', pillBg:'#ccfbf1' };
+}
+
+function posterDateLabel(){
+  const now = new Date();
+  return `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+}
+
+function posterMetaText(plan){
+  const hours = Math.max(1, Math.round((plan.total_minutes || 180) / 60));
+  const cost = plan.total_cost ? `人均约 ¥${plan.total_cost}` : '预算灵活';
+  const people = S.planningMemory?.party_size ? `${S.planningMemory.party_size} 人出行` : '轻松出行';
+  return `${people} · 约 ${hours} 小时 · ${cost}`;
+}
+
+function posterNote(plan, res){
+  const summary = res?.itinerary?.summary || '';
+  if(summary) return summary.replace(/\n/g, ' ');
+  const first = plan.steps?.[0]?.venue?.name || '第一站';
+  const last = plan.steps?.[plan.steps.length - 1]?.venue?.name || '最后一站';
+  return `从${first}到${last}，Leo 已把节奏、距离和氛围都帮你排好。`;
+}
+
+function drawPosterBackground(ctx, W, H, theme){
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, theme.bg1);
+  bg.addColorStop(1, theme.bg2);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = theme.accent;
+  ctx.beginPath(); ctx.arc(W - 80, 120, 180, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = theme.accent2;
+  ctx.beginPath(); ctx.arc(90, H - 120, 220, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = theme.accent;
+  ctx.lineWidth = 2;
+  for(let i=0;i<7;i++){
+    ctx.beginPath();
+    ctx.moveTo(60 + i * 140, 260);
+    ctx.bezierCurveTo(140 + i * 130, 360, 30 + i * 145, 520, 150 + i * 120, 660);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPosterBrand(ctx, W, dateStr, theme){
+  ctx.fillStyle = theme.ink;
+  ctx.font = '800 25px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText('闲时达 Leisure Done', 64, 76);
+  ctx.fillStyle = theme.muted;
+  ctx.font = '20px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText(dateStr, 64, 108);
+  if(S_holiday){
+    const text = `${S_holiday.emoji} ${S_holiday.name}`;
+    ctx.font = '700 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+    const w = ctx.measureText(text).width + 34;
+    ctx.fillStyle = 'rgba(255,255,255,.76)';
+    roundRect(ctx, W - w - 64, 56, w, 40, 20);
+    ctx.fill();
+    ctx.fillStyle = theme.accent;
+    ctx.fillText(text, W - w - 47, 82);
+  }
+}
+
+function drawPosterCard(ctx, x, y, w, h, r){
+  ctx.save();
+  ctx.shadowColor = 'rgba(15,23,42,.12)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 14;
+  ctx.fillStyle = 'rgba(255,255,255,.88)';
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPosterPill(ctx, text, x, y, theme){
+  ctx.font = '700 17px "PingFang SC", "Microsoft YaHei", sans-serif';
+  const w = Math.min(ctx.measureText(text).width + 34, 190);
+  ctx.fillStyle = theme.pillBg;
+  roundRect(ctx, x, y, w, 34, 17);
+  ctx.fill();
+  ctx.fillStyle = theme.accent;
+  ctx.fillText(text, x + 17, y + 23);
+  return w;
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines=3){
+  const chars = [...String(text || '')];
+  const lines = [];
+  let line = '';
+  chars.forEach(ch => {
+    const test = line + ch;
+    if(ctx.measureText(test).width > maxWidth && line){
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  });
+  if(line) lines.push(line);
+  const visible = lines.slice(0, maxLines);
+  if(lines.length > maxLines){
+    let last = visible[visible.length - 1] || '';
+    while(ctx.measureText(last + '…').width > maxWidth && last.length > 1) last = last.slice(0, -1);
+    visible[visible.length - 1] = last + '…';
+  }
+  visible.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+  return y + (visible.length - 1) * lineHeight;
 }
 
 function roundRect(ctx, x, y, w, h, r){
